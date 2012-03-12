@@ -1,5 +1,5 @@
 /*
- * Copyright 2010 the original author or authors.
+ * Copyright 2010-2012 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,23 +19,22 @@ package griffon.plugins.processing.artifact;
 import processing.core.PApplet;
 
 import griffon.core.*;
-
-import groovy.lang.MetaClass;
-import groovy.lang.Closure;
-import groovy.lang.GroovySystem;
-import groovy.lang.GroovyObjectSupport;
-import java.util.Map;
-import java.util.List;
-import java.util.Collections;
-import java.util.concurrent.Callable;
-import java.util.concurrent.Future;
-import java.util.concurrent.ExecutorService;
-
+import groovy.lang.*;
+import org.codehaus.griffon.runtime.builder.UberInterceptorMetaClass;
+import org.codehaus.griffon.runtime.core.ResourceLocator;
 import org.codehaus.griffon.runtime.core.AbstractGriffonArtifact;
 import org.codehaus.griffon.runtime.util.GriffonApplicationHelper;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.InputStream;
+import java.net.URL;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 
 /**
  * 
@@ -44,9 +43,19 @@ import org.slf4j.LoggerFactory;
 public abstract class AbstractGriffonProcessingView extends PApplet implements GriffonProcessingView {
     private GriffonApplication app;
     private final Logger log;
+    private MetaClass myMetaClass;
+    private final ResourceLocator resourceLocator = new ResourceLocator();
     
     public AbstractGriffonProcessingView() {
         log = LoggerFactory.getLogger("griffon.app.processing."+getClass().getName());
+    }
+
+    public void mvcGroupInit(Map<String, Object> args) {
+        // empty
+    }
+
+    public void mvcGroupDestroy() {
+        // empty
     }
 
     public GriffonApplication getApp() {
@@ -62,10 +71,21 @@ public abstract class AbstractGriffonProcessingView extends PApplet implements G
     }
 
     public MetaClass getMetaClass() {
-        return AbstractGriffonArtifact.metaClassOf(this);
+        if (myMetaClass == null) {
+            Class clazz = getClass();
+            myMetaClass = GroovySystem.getMetaClassRegistry().getMetaClass(clazz);
+            if (!(myMetaClass instanceof ExpandoMetaClass) || !(myMetaClass instanceof UberInterceptorMetaClass)) {
+                myMetaClass = new ExpandoMetaClass(clazz, true, true);
+                log.debug("Upgrading MetaClass to " + myMetaClass);
+                myMetaClass.initialize();
+                GroovySystem.getMetaClassRegistry().setMetaClass(clazz, myMetaClass);
+            }
+        }
+        return myMetaClass;
     }
-    
+
     public void setMetaClass(MetaClass metaClass) {
+        myMetaClass = metaClass;
         GroovySystem.getMetaClassRegistry().setMetaClass(getClass(), metaClass);
     }
 
@@ -77,15 +97,30 @@ public abstract class AbstractGriffonProcessingView extends PApplet implements G
         return UIThreadManager.getInstance().isUIThread();
     }
 
+    // TODO @deprecated - remove before Griffon 1.0
     public void execAsync(Runnable runnable) {
+        execInsideUIAsync(runnable);
+    }
+
+    // TODO @deprecated - remove before Griffon 1.0
+    public void execSync(Runnable runnable) {
+        execInsideUISync(runnable);
+    }
+
+    // TODO @deprecated - remove before Griffon 1.0
+    public void execOutside(Runnable runnable) {
+        execOutsideUI(runnable);
+    }
+
+    public void execInsideUIAsync(Runnable runnable) {
         UIThreadManager.getInstance().executeAsync(runnable);
     }
 
-    public void execSync(Runnable runnable) {
+    public void execInsideUISync(Runnable runnable) {
         UIThreadManager.getInstance().executeSync(runnable);
     }
 
-    public void execOutside(Runnable runnable) {
+    public void execOutsideUI(Runnable runnable) {
         UIThreadManager.getInstance().executeOutside(runnable);
     }
 
@@ -104,21 +139,13 @@ public abstract class AbstractGriffonProcessingView extends PApplet implements G
     public Future execFuture(Callable callable) {
         return UIThreadManager.getInstance().executeFuture(callable);
     }
-    
+
     public Logger getLog() {
         return log;
     }
 
-    public void mvcGroupInit(Map<String, Object> args) {
-        // empty
-    }
-
-    public void mvcGroupDestroy() {
-        // empty
-    }
-
     public MVCGroup buildMVCGroup(String mvcType) {
-        return getApp().getMvcGroupManager().buildMVCGroup(mvcType, mvcType, Collections.<String, Object>emptyMap());
+        return getApp().getMvcGroupManager().buildMVCGroup(mvcType, null, Collections.<String, Object>emptyMap());
     }
 
     public MVCGroup buildMVCGroup(String mvcType, String mvcName) {
@@ -126,11 +153,11 @@ public abstract class AbstractGriffonProcessingView extends PApplet implements G
     }
 
     public MVCGroup buildMVCGroup(Map<String, Object> args, String mvcType) {
-        return getApp().getMvcGroupManager().buildMVCGroup(mvcType, mvcType, args);
+        return getApp().getMvcGroupManager().buildMVCGroup(mvcType, null, args);
     }
 
     public MVCGroup buildMVCGroup(String mvcType, Map<String, Object> args) {
-        return getApp().getMvcGroupManager().buildMVCGroup(mvcType, mvcType, args);
+        return getApp().getMvcGroupManager().buildMVCGroup(mvcType, null, args);
     }
 
     public MVCGroup buildMVCGroup(Map<String, Object> args, String mvcType, String mvcName) {
@@ -142,15 +169,15 @@ public abstract class AbstractGriffonProcessingView extends PApplet implements G
     }
 
     public List<? extends GriffonMvcArtifact> createMVCGroup(String mvcType) {
-        return getApp().getMvcGroupManager().createMVCGroup(mvcType, mvcType, Collections.<String, Object>emptyMap());
+        return getApp().getMvcGroupManager().createMVCGroup(mvcType, null, Collections.<String, Object>emptyMap());
     }
 
     public List<? extends GriffonMvcArtifact> createMVCGroup(Map<String, Object> args, String mvcType) {
-        return getApp().getMvcGroupManager().createMVCGroup(mvcType, mvcType, args);
+        return getApp().getMvcGroupManager().createMVCGroup(mvcType, null, args);
     }
 
     public List<? extends GriffonMvcArtifact> createMVCGroup(String mvcType, Map<String, Object> args) {
-        return getApp().getMvcGroupManager().createMVCGroup(mvcType, mvcType, args);
+        return getApp().getMvcGroupManager().createMVCGroup(mvcType, null, args);
     }
 
     public List<? extends GriffonMvcArtifact> createMVCGroup(String mvcType, String mvcName) {
@@ -170,7 +197,7 @@ public abstract class AbstractGriffonProcessingView extends PApplet implements G
     }
 
     public void withMVCGroup(String mvcType, Closure handler) {
-        getApp().getMvcGroupManager().withMVCGroup(mvcType, mvcType, Collections.<String, Object>emptyMap(), handler);
+        getApp().getMvcGroupManager().withMVCGroup(mvcType, null, Collections.<String, Object>emptyMap(), handler);
     }
 
     public void withMVCGroup(String mvcType, String mvcName, Closure handler) {
@@ -178,11 +205,11 @@ public abstract class AbstractGriffonProcessingView extends PApplet implements G
     }
 
     public void withMVCGroup(String mvcType, Map<String, Object> args, Closure handler) {
-        getApp().getMvcGroupManager().withMVCGroup(mvcType, mvcType, args, handler);
+        getApp().getMvcGroupManager().withMVCGroup(mvcType, null, args, handler);
     }
 
     public void withMVCGroup(Map<String, Object> args, String mvcType, Closure handler) {
-        getApp().getMvcGroupManager().withMVCGroup(mvcType, mvcType, args, handler);
+        getApp().getMvcGroupManager().withMVCGroup(mvcType, null, args, handler);
     }
 
     public void withMVCGroup(String mvcType, String mvcName, Map<String, Object> args, Closure handler) {
@@ -194,7 +221,7 @@ public abstract class AbstractGriffonProcessingView extends PApplet implements G
     }
 
     public <M extends GriffonModel, V extends GriffonView, C extends GriffonController> void withMVCGroup(String mvcType, MVCClosure<M, V, C> handler) {
-        getApp().getMvcGroupManager().withMVCGroup(mvcType, mvcType, Collections.<String, Object>emptyMap(), handler);
+        getApp().getMvcGroupManager().withMVCGroup(mvcType, null, Collections.<String, Object>emptyMap(), handler);
     }
 
     public <M extends GriffonModel, V extends GriffonView, C extends GriffonController> void withMVCGroup(String mvcType, String mvcName, MVCClosure<M, V, C> handler) {
@@ -202,11 +229,11 @@ public abstract class AbstractGriffonProcessingView extends PApplet implements G
     }
 
     public <M extends GriffonModel, V extends GriffonView, C extends GriffonController> void withMVCGroup(String mvcType, Map<String, Object> args, MVCClosure<M, V, C> handler) {
-        getApp().getMvcGroupManager().withMVCGroup(mvcType, mvcType, args, handler);
+        getApp().getMvcGroupManager().withMVCGroup(mvcType, null, args, handler);
     }
 
     public <M extends GriffonModel, V extends GriffonView, C extends GriffonController> void withMVCGroup(Map<String, Object> args, String mvcType, MVCClosure<M, V, C> handler) {
-        getApp().getMvcGroupManager().withMVCGroup(mvcType, mvcType, args, handler);
+        getApp().getMvcGroupManager().withMVCGroup(mvcType, null, args, handler);
     }
 
     public <M extends GriffonModel, V extends GriffonView, C extends GriffonController> void withMVCGroup(String mvcType, String mvcName, Map<String, Object> args, MVCClosure<M, V, C> handler) {
@@ -215,5 +242,17 @@ public abstract class AbstractGriffonProcessingView extends PApplet implements G
 
     public <M extends GriffonModel, V extends GriffonView, C extends GriffonController> void withMVCGroup(Map<String, Object> args, String mvcType, String mvcName, MVCClosure<M, V, C> handler) {
         getApp().getMvcGroupManager().withMVCGroup(mvcType, mvcName, args, handler);
+    }
+
+    public InputStream getResourceAsStream(String name) {
+        return resourceLocator.getResourceAsStream(name);
+    }
+
+    public URL getResourceAsURL(String name) {
+        return resourceLocator.getResourceAsURL(name);
+    }
+
+    public List<URL> getResources(String name) {
+        return resourceLocator.getResources(name);
     }
 }

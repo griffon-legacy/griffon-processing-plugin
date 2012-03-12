@@ -1,5 +1,5 @@
 /*
- * Copyright 2010 the original author or authors.
+ * Copyright 2010-2012 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,19 +17,6 @@
 /**
  * @author Andres Almiray
  */
-
-def eventClosure1 = binding.variables.containsKey('eventSetClasspath') ? eventSetClasspath : {cl->}
-eventSetClasspath = { cl ->
-    eventClosure1(cl)
-    if(compilingPlugin('processing')) return
-    griffonSettings.dependencyManager.flatDirResolver name: 'griffon-processing-plugin', dirs: "${processingPluginDir}/addon"
-    griffonSettings.dependencyManager.addPluginDependency('processing', [
-        conf: 'compile',
-        name: 'griffon-processing-addon',
-        group: 'org.codehaus.griffon.plugins',
-        version: processingPluginVersion
-    ])
-}
 
 eventCollectArtifacts = { artifactsInfo ->
     if(!artifactsInfo.find{ it.type == 'processing' }) {
