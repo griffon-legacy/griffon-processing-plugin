@@ -20,7 +20,7 @@ import griffon.plugins.processing.factory.ProcessingFactory
  * @author Andres Almiray
  */
 class ProcessingGriffonAddon {
-    def factories = [
+    Map factories = [
         processing: new ProcessingFactory()
     ]
 }
